@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Development of a Digital Identity Management System Using Blockchain
 
-## Getting Started
+## Overview
 
-First, run the development server:
+This project aims to develop a **Digital Identity Management System** leveraging the power of **Blockchain technology** to ensure secure, immutable, and transparent management of digital identities. By using blockchain, the system allows individuals to control their identity data, reduce the risks of identity theft, and enable seamless digital authentication across various services.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Technologies Used
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Frontend**: Built with **Next.js** for a fast, scalable, and SEO-friendly user interface.
+- **Backend**: **Go (Golang)** is used for the backend API, ensuring high performance and concurrency handling.
+- **Blockchain**: The system uses **Solidity** for writing smart contracts on the Ethereum blockchain, enabling decentralized identity management.
+- **Web3**: To interact with the blockchain and handle user authentication and identity operations.
+- **Database**: You can use a database like **PostgreSQL** or **MongoDB** for storing off-chain data, such as user metadata and transaction records.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Decentralized Identity Management**: Users manage their identities without relying on centralized entities. The blockchain guarantees the authenticity and immutability of identity data.
+- **Secure Authentication**: The blockchain enables secure authentication, reducing reliance on traditional passwords and centralized systems.
+- **Self-Sovereign Identity (SSI)**: Users control their identity data, granting or revoking access to services without relying on intermediaries.
+- **Immutable and Transparent**: All identity-related actions (such as creation, updates, and verification) are recorded on the blockchain, providing an immutable audit trail.
+- **Smart Contracts**: Smart contracts automate identity management processes securely and without intermediaries.
 
-## Learn More
+## Requirements
 
-To learn more about Next.js, take a look at the following resources:
+To run this project locally, you will need the following:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Node.js** (v16 or later)
+- **Next.js** for the frontend
+- **Go (Golang)** for the backend API
+- **Solidity** for writing Ethereum smart contracts
+- **Truffle** or **Hardhat** for Ethereum smart contract development
+- **Metamask** or any Web3-enabled wallet for interacting with the blockchain
+- **Ganache** (for local blockchain development) or access to a public Ethereum test network (e.g., Rinkeby, Goerli)
