@@ -6,14 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// User struct
 type User struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
-// Sample data (in-memory database)
 var users = []User{
 	{ID: "1", Name: "John Doe", Email: "john@example.com"},
 	{ID: "2", Name: "Jane Doe", Email: "jane@example.com"},
@@ -22,12 +20,10 @@ var users = []User{
 func main() {
 	router := gin.Default()
 
-	// Get all users
 	router.GET("/users", func(c *gin.Context) {
 		c.JSON(http.StatusOK, users)
 	})
 
-	// Get a user by ID
 	router.GET("/users/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		for _, user := range users {
@@ -39,7 +35,6 @@ func main() {
 		c.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
 	})
 
-	// Create a new user
 	router.POST("/users", func(c *gin.Context) {
 		var newUser User
 		if err := c.ShouldBindJSON(&newUser); err != nil {
@@ -50,7 +45,6 @@ func main() {
 		c.JSON(http.StatusCreated, newUser)
 	})
 
-	// Update user by ID
 	router.PUT("/users/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		var updatedUser User
@@ -68,7 +62,6 @@ func main() {
 		c.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
 	})
 
-	// Delete user by ID
 	router.DELETE("/users/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		for i, user := range users {
@@ -81,6 +74,5 @@ func main() {
 		c.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
 	})
 
-	// Run the server
 	router.Run(":8080")
 }
