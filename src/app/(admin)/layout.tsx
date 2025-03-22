@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "../globals.css";
-import { openSans, pinyonScript, playFair, roboto } from "@/lib/fonts";
+import { openSans, pinyonScript, playFair, roboto } from "@/libs/fonts";
 
 export const metadata: Metadata = {
   title: "Create Next App",
