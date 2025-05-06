@@ -14,6 +14,7 @@ export const getProfile = async (
 ): Promise<void> => {
   try {
     // Now req.user is an optional property from the extended Express.Request
+    console.log(req.userId);
     if (!req.userId) {
       res.status(401).json({ message: "Not authenticated" });
       return;

@@ -8,6 +8,7 @@ export interface IUser extends Document {
   phone?: string;
   did?: string;
   walletAddress?: string;
+  isAdmin?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +51,10 @@ const UserSchema: Schema = new Schema(
     walletAddress: {
       type: String,
       default: null,
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
     },
   },
   {

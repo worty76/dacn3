@@ -14,6 +14,8 @@ export interface IDocument extends MongooseDocument {
   verifiedBy?: mongoose.Types.ObjectId;
   blockchainTxHash?: string;
   verificationTxHash?: string;
+  submittedForVerification?: boolean;
+  submissionDate?: Date;
 }
 
 // Create the schema for Document
@@ -70,6 +72,13 @@ const DocumentSchema = new mongoose.Schema(
     verificationTxHash: {
       type: String,
       trim: true,
+    },
+    submittedForVerification: {
+      type: Boolean,
+      default: false,
+    },
+    submissionDate: {
+      type: Date,
     },
   },
   {

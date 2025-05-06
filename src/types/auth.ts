@@ -1,8 +1,11 @@
 export interface User {
   id: string;
-  email: string;
-  role: "admin" | "user";
   name: string;
+  email: string;
+  phone?: string;
+  role?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AuthState {

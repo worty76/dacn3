@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import User from "../models/user";
+import { generateToken } from "../utils/jwtConfig";
 
 /**
  * Register a new user
@@ -40,12 +40,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Save user to database
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "24h" }
-    );
+    // Generate JWT token using the centralized function
+    const token = generateToken(user.id);
 
     // Return success response
     res.status(201).json({
@@ -92,12 +88,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "24h" }
-    );
+    // Generate JWT token using the centralized function
+    const token = generateToken(user.id);
 
     // Return success response
     res.status(200).json({

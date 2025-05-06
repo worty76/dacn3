@@ -1,14 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuthStore } from "@/stores/useAuthStore";
 import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -44,17 +39,10 @@ import {
   FileIcon,
   Plus,
   Search,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
-
-// Mock data for document types
-const documentTypes = [
-  "National ID Card",
-  "Passport",
-  "Driver's License",
-  "Birth Certificate",
-  "Utility Bill",
-  "Bank Statement",
-];
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Document status options
 const documentStatuses = {
@@ -64,53 +52,23 @@ const documentStatuses = {
   REJECTED: "rejected",
 };
 
-// Mock data for documents
-const mockDocuments = [
-  {
-    id: "1",
-    name: "National ID Card",
-    type: "National ID Card",
-    uploadDate: new Date(2023, 5, 15),
-    status: documentStatuses.VERIFIED,
-    previewUrl: "https://placehold.co/100x60",
-  },
-  {
-    id: "2",
-    name: "Utility Bill",
-    type: "Utility Bill",
-    uploadDate: new Date(2023, 6, 10),
-    status: documentStatuses.PENDING,
-    previewUrl: "https://placehold.co/100x60",
-  },
-  {
-    id: "3",
-    name: "Bank Statement",
-    type: "Bank Statement",
-    uploadDate: new Date(2023, 7, 5),
-    status: documentStatuses.REJECTED,
-    previewUrl: "https://placehold.co/100x60",
-  },
-  {
-    id: "4",
-    name: "Passport",
-    type: "Passport",
-    uploadDate: new Date(2023, 8, 1),
-    status: documentStatuses.PROCESSING,
-    previewUrl: "https://placehold.co/100x60",
-  },
-];
-
+// Define the document interface to match API response
 type Document = {
   id: string;
-  name: string;
-  type: string;
-  uploadDate: Date;
-  status: string;
+  documentType: string;
+  fileName: string;
+  uploadedAt: string;
+  isVerified: boolean;
+  submittedForVerification?: boolean;
+  verifiedAt?: string;
+  status?: string;
   previewUrl?: string;
 };
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<Document[]>(mockDocuments);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
@@ -118,17 +76,124 @@ export default function DocumentsPage() {
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const handleDeleteDocument = (documentId: string) => {
+  // Get token from auth store
+  const { token } = useAuthStore();
+
+  // Fetch documents when component mounts
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        if (!token) {
+          throw new Error("Authentication token not found. Please log in.");
+        }
+
+        const response = await fetch("http://localhost:8000/api/documents", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch documents: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.message || "Failed to load documents");
+        }
+
+        // Transform the API response to match our document interface
+        const transformedDocuments = data.documents.map((doc: any) => ({
+          id: doc.id,
+          documentType: doc.documentType,
+          fileName: doc.fileName,
+          uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
+          isVerified: doc.isVerified,
+          status: doc.isVerified
+            ? documentStatuses.VERIFIED
+            : doc.submittedForVerification
+            ? documentStatuses.PROCESSING
+            : documentStatuses.PENDING,
+          verifiedAt: doc.verifiedAt
+            ? new Date(doc.verifiedAt).toLocaleDateString()
+            : undefined,
+          // For preview, we would typically get a URL from the server,
+          // but since we're mocking, we'll use a placeholder
+          previewUrl: "https://placehold.co/100x60",
+        }));
+
+        setDocuments(transformedDocuments);
+      } catch (err) {
+        console.error("Error fetching documents:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to load documents"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDocuments();
+  }, [token]);
+
+  const handleDeleteDocument = async (documentId: string) => {
     setDocumentToDelete(documentId);
     setOpenConfirmDialog(true);
   };
 
-  const confirmDelete = () => {
-    if (documentToDelete) {
-      setDocuments(documents.filter((doc) => doc.id !== documentToDelete));
-      setDocumentToDelete(null);
+  const confirmDelete = async () => {
+    if (!documentToDelete || !token) {
+      setOpenConfirmDialog(false);
+      return;
     }
-    setOpenConfirmDialog(false);
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/documents/${documentToDelete}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete document: ${response.statusText}`);
+      }
+
+      setDocuments(documents.filter((doc) => doc.id !== documentToDelete));
+    } catch (err) {
+      console.error("Error deleting document:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to delete document"
+      );
+    } finally {
+      setDocumentToDelete(null);
+      setOpenConfirmDialog(false);
+    }
+  };
+
+  const handleDownloadDocument = async (documentId: string) => {
+    if (!token) return;
+
+    try {
+      window.open(
+        `http://localhost:8000/api/documents/download/${documentId}?token=${encodeURIComponent(
+          token
+        )}`,
+        "_blank"
+      );
+    } catch (err) {
+      console.error("Error downloading document:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to download document"
+      );
+    }
   };
 
   const handlePreviewDocument = (document: Document) => {
@@ -154,7 +219,8 @@ export default function DocumentsPage() {
   // Filter documents based on search term and active tab
   const filteredDocuments = documents.filter(
     (doc) =>
-      doc.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (doc.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.documentType.toLowerCase().includes(searchTerm.toLowerCase())) &&
       (activeTab === "all" || doc.status === activeTab)
   );
 
@@ -191,6 +257,13 @@ export default function DocumentsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4">
               <TabsTrigger value="all">All Documents</TabsTrigger>
@@ -210,88 +283,105 @@ export default function DocumentsPage() {
 
             <TabsContent value={activeTab}>
               <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Document</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Upload Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredDocuments.length > 0 ? (
-                      filteredDocuments.map((doc) => (
-                        <TableRow key={doc.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-3">
-                              {doc.previewUrl ? (
-                                <img
-                                  src={doc.previewUrl}
-                                  alt={doc.name}
-                                  className="h-10 w-16 rounded object-cover"
-                                />
-                              ) : (
-                                <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
-                                  <FileIcon size={16} />
-                                </div>
-                              )}
-                              <span>{doc.name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{doc.type}</TableCell>
-                          <TableCell>
-                            {doc.uploadDate.toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(doc.status)}>
-                              {doc.status.toUpperCase()}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() => handlePreviewDocument(doc)}
-                                >
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Download
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDeleteDocument(doc.id)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                {isLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <span className="ml-2">Loading documents...</span>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Document</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Upload Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredDocuments.length > 0 ? (
+                        filteredDocuments.map((doc) => (
+                          <TableRow key={doc.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-3">
+                                {doc.previewUrl ? (
+                                  <img
+                                    src={doc.previewUrl}
+                                    alt={doc.fileName}
+                                    className="h-10 w-16 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
+                                    <FileIcon size={16} />
+                                  </div>
+                                )}
+                                <span>{doc.fileName}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{doc.documentType}</TableCell>
+                            <TableCell>{doc.uploadedAt}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={getStatusBadgeVariant(
+                                  doc.status || ""
+                                )}
+                              >
+                                {(doc.status || "").toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => handlePreviewDocument(doc)}
+                                  >
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleDownloadDocument(doc.id)
+                                    }
+                                  >
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteDocument(doc.id)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell
+                            colSpan={5}
+                            className="h-24 text-center text-muted-foreground"
+                          >
+                            {!isLoading && !error
+                              ? "No documents found. Upload some documents to get started!"
+                              : error
+                              ? "Error loading documents."
+                              : "Loading documents..."}
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className="h-24 text-center text-muted-foreground"
-                        >
-                          No documents found.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -326,17 +416,17 @@ export default function DocumentsPage() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{previewDocument?.name}</DialogTitle>
+            <DialogTitle>{previewDocument?.fileName}</DialogTitle>
             <DialogDescription>
-              Document Type: {previewDocument?.type} | Uploaded:{" "}
-              {previewDocument?.uploadDate.toLocaleDateString()}
+              Document Type: {previewDocument?.documentType} | Uploaded:{" "}
+              {previewDocument?.uploadedAt}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-center p-4">
             {previewDocument?.previewUrl ? (
               <img
                 src={previewDocument.previewUrl}
-                alt={previewDocument.name}
+                alt={previewDocument.fileName}
                 className="max-h-[300px] object-contain"
               />
             ) : (
@@ -349,7 +439,7 @@ export default function DocumentsPage() {
             <Badge
               variant={getStatusBadgeVariant(previewDocument?.status || "")}
             >
-              {previewDocument?.status.toUpperCase()}
+              {previewDocument?.status?.toUpperCase()}
             </Badge>
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" /> Download
