@@ -14,7 +14,7 @@ import {
   verifyDocument,
 } from "../controllers/documentController";
 import { getAccessLogs, logAccess } from "../controllers/logController";
-import { authenticate } from "../middlewares/authenticate";
+import { authenticate, isAdmin } from "../middleware/auth"; // Fixed import path
 
 // Create router instance
 const router = express.Router();
@@ -23,7 +23,7 @@ const router = express.Router();
 router.post("/login", login);
 router.post("/register", register);
 
-// User profile routes
+// Profile routes
 router.get("/profile", authenticate, getProfile);
 router.put("/profile", authenticate, updateProfile);
 
@@ -33,6 +33,7 @@ router.get("/blockchain-identity", authenticate, getBlockchainIdentity);
 router.put(
   "/blockchain-identity/verify",
   authenticate,
+  isAdmin, // Added admin check
   verifyBlockchainIdentity
 );
 router.put(

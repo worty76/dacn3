@@ -5,6 +5,8 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   Form,
@@ -46,6 +48,8 @@ const formSchema = z
   });
 
 export function RegisterForm() {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -58,17 +62,49 @@ export function RegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
-      // Assuming an async registration function
-      console.log(values);
-      toast(
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(values, null, 2)}</code>
-        </pre>
-      );
-    } catch (error) {
-      console.error("Form submission error", error);
-      toast.error("Failed to submit the form. Please try again.");
+      const { confirmPassword, ...registrationData } = values;
+
+      const response = await fetch("http://localhost:8000/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(registrationData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed");
+      }
+
+      // Show success message
+      toast.success("Registration successful! Redirecting to login...");
+
+      // Store the token and user data if returned
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+
+        // Redirect to dashboard if auto-login is enabled
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 2000);
+      } else {
+        // Redirect to login page if no auto-login
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      }
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      toast.error(error.message || "Failed to register. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -93,7 +129,12 @@ export function RegisterForm() {
                     <FormItem className="grid gap-2">
                       <FormLabel htmlFor="name">Full Name</FormLabel>
                       <FormControl>
-                        <Input id="name" placeholder="John Doe" {...field} />
+                        <Input
+                          id="name"
+                          placeholder="John Doe"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -114,6 +155,7 @@ export function RegisterForm() {
                           type="email"
                           autoComplete="email"
                           {...field}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
@@ -129,14 +171,11 @@ export function RegisterForm() {
                     <FormItem className="grid gap-2">
                       <FormLabel htmlFor="phone">Phone Number</FormLabel>
                       <FormControl>
-                        <PhoneInput {...field} defaultCountry="TR" />
-                        {/* <Input
-                          id="phone"
-                          placeholder="555-123-4567"
-                          type="tel"
-                          autoComplete="tel"
+                        <PhoneInput
                           {...field}
-                        /> */}
+                          defaultCountry="TR"
+                          disabled={isSubmitting}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -156,6 +195,7 @@ export function RegisterForm() {
                           placeholder="******"
                           autoComplete="new-password"
                           {...field}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
@@ -178,6 +218,7 @@ export function RegisterForm() {
                           placeholder="******"
                           autoComplete="new-password"
                           {...field}
+                          disabled={isSubmitting}
                         />
                       </FormControl>
                       <FormMessage />
@@ -185,8 +226,12 @@ export function RegisterForm() {
                   )}
                 />
 
-                <Button type="submit" className="w-full">
-                  Register
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Registering..." : "Register"}
                 </Button>
               </div>
             </form>
