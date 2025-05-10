@@ -41,6 +41,7 @@ import {
   Search,
   Loader2,
   AlertCircle,
+  FileText,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -62,6 +63,8 @@ type Document = {
   submittedForVerification?: boolean;
   verifiedAt?: string;
   status?: string;
+  ipfsUrl?: string; // Add IPFS URL field
+  ipfsHash?: string;
   previewUrl?: string;
 };
 
@@ -107,24 +110,30 @@ export default function DocumentsPage() {
         }
 
         // Transform the API response to match our document interface
-        const transformedDocuments = data.documents.map((doc: any) => ({
-          id: doc.id,
-          documentType: doc.documentType,
-          fileName: doc.fileName,
-          uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
-          isVerified: doc.isVerified,
-          status: doc.isVerified
-            ? documentStatuses.VERIFIED
-            : doc.submittedForVerification
-            ? documentStatuses.PROCESSING
-            : documentStatuses.PENDING,
-          verifiedAt: doc.verifiedAt
-            ? new Date(doc.verifiedAt).toLocaleDateString()
-            : undefined,
-          // For preview, we would typically get a URL from the server,
-          // but since we're mocking, we'll use a placeholder
-          previewUrl: "https://placehold.co/100x60",
-        }));
+        const transformedDocuments = data.documents.map((doc: any) => {
+          // Use our dedicated proxy URL for IPFS content
+          const proxyUrl = `http://localhost:8000/api/ipfs/content/${doc.ipfsHash}`;
+
+          return {
+            id: doc.id,
+            documentType: doc.documentType,
+            fileName: doc.fileName,
+            uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
+            isVerified: doc.isVerified,
+            status: doc.isVerified
+              ? documentStatuses.VERIFIED
+              : doc.submittedForVerification
+              ? documentStatuses.PROCESSING
+              : documentStatuses.PENDING,
+            verifiedAt: doc.verifiedAt
+              ? new Date(doc.verifiedAt).toLocaleDateString()
+              : undefined,
+            // Use the proxy URL for better compatibility
+            ipfsUrl: proxyUrl,
+            ipfsHash: doc.ipfsHash,
+            previewUrl: proxyUrl,
+          };
+        });
 
         setDocuments(transformedDocuments);
       } catch (err) {
@@ -182,14 +191,53 @@ export default function DocumentsPage() {
     if (!token) return;
 
     try {
-      window.open(
-        `http://localhost:8000/api/documents/download/${documentId}?token=${encodeURIComponent(
-          token
-        )}`,
-        "_blank"
-      );
+      // Use the new dedicated download endpoint
+      const downloadUrl = `http://localhost:8000/api/ipfs/download/${documentId}`;
+
+      // Show a loading indicator
+      const downloadingDoc = documents.find((doc) => doc.id === documentId);
+      if (downloadingDoc) {
+        console.log(`Starting download of ${downloadingDoc.fileName}...`);
+      }
+
+      // Create fetch request with authentication
+      fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Download failed: ${response.statusText}`);
+          }
+          return response.blob();
+        })
+        .then((blob) => {
+          // Get file name from the document
+          const fileName =
+            downloadingDoc?.fileName || `document-${documentId}.file`;
+
+          // Create download link
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+
+          // Trigger download
+          link.click();
+
+          // Clean up
+          URL.revokeObjectURL(url);
+          document.body.removeChild(link);
+          console.log(`Download complete for ${fileName}`);
+        })
+        .catch((error) => {
+          console.error("Download failed:", error);
+          setError(`Download failed: ${error.message}`);
+        });
     } catch (err) {
-      console.error("Error downloading document:", err);
+      console.error("Error initiating download:", err);
       setError(
         err instanceof Error ? err.message : "Failed to download document"
       );
@@ -305,18 +353,46 @@ export default function DocumentsPage() {
                           <TableRow key={doc.id}>
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-3">
-                                {doc.previewUrl ? (
+                                {doc.fileName.toLowerCase().endsWith(".pdf") ? (
+                                  <div className="h-10 w-16 bg-red-50 border border-red-100 rounded flex items-center justify-center">
+                                    <FileText className="h-6 w-6 text-red-500" />
+                                  </div>
+                                ) : doc.previewUrl ? (
                                   <img
                                     src={doc.previewUrl}
                                     alt={doc.fileName}
                                     className="h-10 w-16 rounded object-cover"
+                                    onError={(e) => {
+                                      // If image fails to load, replace with generic file icon
+                                      (
+                                        e.target as HTMLImageElement
+                                      ).style.display = "none";
+                                      const container = (
+                                        e.target as HTMLImageElement
+                                      ).parentElement;
+                                      if (container) {
+                                        container.innerHTML = `
+                                          <div class="h-10 w-16 rounded bg-gray-100 flex items-center justify-center">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500">
+                                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                              <polyline points="14 2 14 8 20 8"></polyline>
+                                              <line x1="16" y1="13" x2="8" y2="13"></line>
+                                              <line x1="16" y1="17" x2="8" y2="17"></line>
+                                              <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                          </div>
+                                        `;
+                                      }
+                                    }}
                                   />
                                 ) : (
                                   <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
                                     <FileIcon size={16} />
                                   </div>
                                 )}
-                                <span>{doc.fileName}</span>
+                                <span className="truncate max-w-[150px]">
+                                  {doc.fileName}
+                                </span>
                               </div>
                             </TableCell>
                             <TableCell>{doc.documentType}</TableCell>
@@ -414,7 +490,7 @@ export default function DocumentsPage() {
 
       {/* Document Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{previewDocument?.fileName}</DialogTitle>
             <DialogDescription>
@@ -422,28 +498,94 @@ export default function DocumentsPage() {
               {previewDocument?.uploadedAt}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center justify-center p-4">
+
+          {/* PDF Viewer with improved styling for better viewing experience */}
+          <div className="flex-1 min-h-[70vh] overflow-auto">
             {previewDocument?.previewUrl ? (
-              <img
-                src={previewDocument.previewUrl}
-                alt={previewDocument.fileName}
-                className="max-h-[300px] object-contain"
-              />
+              previewDocument.fileName.toLowerCase().endsWith(".pdf") ? (
+                <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-md">
+                  <div className="bg-red-50 border border-red-100 rounded-full p-6 mb-4">
+                    <FileText className="h-12 w-12 text-red-500" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">
+                    {previewDocument.fileName}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-6 text-center">
+                    PDF document preview is available in a separate tab or by
+                    downloading.
+                  </p>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        window.open(previewDocument.previewUrl, "_blank")
+                      }
+                    >
+                      <Eye className="mr-2 h-4 w-4" /> View PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        previewDocument &&
+                        handleDownloadDocument(previewDocument.id)
+                      }
+                    >
+                      <Download className="mr-2 h-4 w-4" /> Download
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <img
+                  src={previewDocument.previewUrl}
+                  alt={previewDocument.fileName}
+                  className="max-h-[70vh] max-w-full object-contain mx-auto"
+                  onError={(e) => {
+                    // Fallback if image fails to load
+                    (e.target as HTMLImageElement).src =
+                      "https://placehold.co/300x400?text=Preview+Not+Available";
+                    console.error(
+                      "Failed to load image from:",
+                      previewDocument.previewUrl
+                    );
+                  }}
+                />
+              )
             ) : (
-              <div className="h-[200px] w-[200px] bg-muted flex items-center justify-center rounded">
+              <div className="h-[200px] w-[200px] bg-muted flex items-center justify-center rounded mx-auto">
                 <FileIcon size={40} />
               </div>
             )}
           </div>
-          <div className="flex justify-between">
+
+          <div className="flex justify-between mt-4">
             <Badge
               variant={getStatusBadgeVariant(previewDocument?.status || "")}
             >
               {previewDocument?.status?.toUpperCase()}
             </Badge>
-            <Button variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" /> Download
-            </Button>
+            <div className="space-x-2">
+              {previewDocument?.previewUrl &&
+                !previewDocument.fileName.toLowerCase().endsWith(".pdf") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      window.open(previewDocument.previewUrl, "_blank")
+                    }
+                  >
+                    <Eye className="mr-2 h-4 w-4" /> Open in New Tab
+                  </Button>
+                )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  previewDocument && handleDownloadDocument(previewDocument.id)
+                }
+              >
+                <Download className="mr-2 h-4 w-4" /> Download
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

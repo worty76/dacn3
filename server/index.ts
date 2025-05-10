@@ -6,6 +6,8 @@ import userRoutes from "./src/routes/userRoute";
 import documentRoutes from "./src/routes/documentRoute";
 import blockchainRoutes from "./src/routes/blockchainRoute";
 import logRoutes from "./src/routes/logRoute";
+import ipfsRoutes from "./src/routes/ipfsRoute";
+import shareRoutes from "./src/routes/shareRoute"; // Add this import
 
 // For env File
 dotenv.config();
@@ -39,6 +41,8 @@ app.use("/api/auth", userRoutes);
 app.use("/api/documents", documentRoutes);
 app.use("/api/blockchain", blockchainRoutes);
 app.use("/api/logs", logRoutes);
+app.use("/api/ipfs", ipfsRoutes);
+app.use("/api/verify", shareRoutes); // Add this route
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);

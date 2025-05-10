@@ -13,9 +13,11 @@ import {
   Shield,
   FileText,
   ArrowRight,
-  FileCheck,
   RefreshCw,
+  FileIcon,
   Loader2,
+  Download,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +38,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import PDFViewer from "@/components/document/PDFViewer";
 
 // Define the document interface
 interface UserDocument {
@@ -47,6 +57,8 @@ interface UserDocument {
   verifiedAt?: string;
   feedback?: string;
   status: string;
+  ipfsUrl?: string;
+  ipfsHash?: string;
 }
 
 // Document status mapping
@@ -89,6 +101,10 @@ export default function KYCVerificationPage() {
   const [isDownloading, setIsDownloading] = useState<{
     [key: string]: boolean;
   }>({});
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<UserDocument | null>(
+    null
+  );
 
   // Get token from auth store
   const { token } = useAuthStore();
@@ -120,22 +136,30 @@ export default function KYCVerificationPage() {
         }
 
         // Transform API documents to match our UI requirements
-        const transformedDocuments = data.documents.map((doc: any) => ({
-          id: doc.id,
-          documentType: doc.documentType,
-          fileName: doc.fileName,
-          isVerified: doc.isVerified,
-          status: doc.isVerified
-            ? "verified"
-            : doc.submittedForVerification
-            ? "pending"
-            : "required",
-          uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
-          verifiedAt: doc.verifiedAt
-            ? new Date(doc.verifiedAt).toLocaleDateString()
-            : undefined,
-          feedback: doc.feedback || null,
-        }));
+        const transformedDocuments = data.documents.map((doc: any) => {
+          // Use the proxy server URL instead of direct Pinata URLs
+          const proxyUrl = `http://localhost:8000/api/ipfs/content/${doc.ipfsHash}`;
+
+          return {
+            id: doc.id,
+            documentType: doc.documentType,
+            fileName: doc.fileName,
+            isVerified: doc.isVerified,
+            status: doc.isVerified
+              ? "verified"
+              : doc.submittedForVerification
+              ? "pending"
+              : "required",
+            uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
+            verifiedAt: doc.verifiedAt
+              ? new Date(doc.verifiedAt).toLocaleDateString()
+              : undefined,
+            feedback: doc.feedback || null,
+            // Use our proxy instead of direct Pinata gateway
+            ipfsUrl: proxyUrl,
+            ipfsHash: doc.ipfsHash,
+          };
+        });
 
         setDocuments(transformedDocuments);
       } catch (err) {
@@ -149,7 +173,8 @@ export default function KYCVerificationPage() {
     };
 
     fetchDocuments();
-  }, [token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Function to download a document
   const handleDownloadDocument = async (documentId: string) => {
@@ -159,8 +184,11 @@ export default function KYCVerificationPage() {
     setIsDownloading((prev) => ({ ...prev, [documentId]: true }));
 
     try {
-      // Create the download URL
-      const downloadUrl = `http://localhost:8000/api/documents/download/${documentId}`;
+      // Use the dedicated download endpoint from your IPFS controller
+      const downloadUrl = `http://localhost:8000/api/ipfs/download/${documentId}`;
+
+      console.log(`Downloading document with ID: ${documentId}`);
+      console.log(`Using download URL: ${downloadUrl}`);
 
       // Fetch the document with authentication
       const response = await fetch(downloadUrl, {
@@ -175,6 +203,7 @@ export default function KYCVerificationPage() {
 
       // Get the file blob
       const blob = await response.blob();
+      console.log(`Got blob: ${blob.size} bytes, type: ${blob.type}`);
 
       // Create a download link and click it
       const url = window.URL.createObjectURL(blob);
@@ -192,11 +221,13 @@ export default function KYCVerificationPage() {
         }
       }
 
+      console.log(`Using filename: ${filename}`);
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      console.log("Download completed");
     } catch (err) {
       console.error("Error downloading document:", err);
       setError(
@@ -206,6 +237,12 @@ export default function KYCVerificationPage() {
       // Reset downloading state for this document
       setIsDownloading((prev) => ({ ...prev, [documentId]: false }));
     }
+  };
+
+  // Function to preview a document
+  const handlePreviewDocument = (document: UserDocument) => {
+    setPreviewDocument(document);
+    setPreviewOpen(true);
   };
 
   const verificationProgress = calculateProgress(documents);
@@ -318,8 +355,56 @@ export default function KYCVerificationPage() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <div className="h-32 bg-muted rounded-md flex items-center justify-center">
-                          <FileText className="h-10 w-10 text-muted-foreground" />
+                        <div
+                          className="h-32 bg-muted rounded-md flex items-center justify-center overflow-hidden cursor-pointer"
+                          onClick={() => handlePreviewDocument(doc)}
+                        >
+                          {doc.ipfsUrl ? (
+                            doc.ipfsUrl.toLowerCase().endsWith(".pdf") ? (
+                              <div className="flex items-center justify-center w-full h-full bg-slate-100">
+                                <FileText className="h-10 w-10 text-slate-400" />
+                                <span className="ml-2 text-sm text-slate-500">
+                                  PDF Document
+                                </span>
+                              </div>
+                            ) : (
+                              <img
+                                src={doc.ipfsUrl}
+                                alt={doc.documentType}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  try {
+                                    // Safely handle image load failure
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = "none";
+
+                                    // Create a fallback element
+                                    const fallback =
+                                      document.createElement("div");
+                                    fallback.className =
+                                      "flex flex-col items-center justify-center w-full h-full";
+                                    fallback.innerHTML = `
+                                      <svg class="h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                      <span class="mt-2 text-xs text-muted-foreground">Document Preview</span>
+                                    `;
+
+                                    // Append the fallback if parent exists
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      parent.appendChild(fallback);
+                                    }
+                                  } catch (innerError) {
+                                    console.error(
+                                      "Error handling image failure:",
+                                      innerError
+                                    );
+                                  }
+                                }}
+                              />
+                            )
+                          ) : (
+                            <FileText className="h-10 w-10 text-muted-foreground" />
+                          )}
                         </div>
 
                         <div className="mt-3 text-sm">
@@ -371,6 +456,16 @@ export default function KYCVerificationPage() {
                           }
                           className="w-full"
                           size="sm"
+                          onClick={() => handlePreviewDocument(doc)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Document
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          size="sm"
                           onClick={() => handleDownloadDocument(doc.id)}
                           disabled={isDownloadingThis}
                         >
@@ -381,8 +476,8 @@ export default function KYCVerificationPage() {
                             </>
                           ) : (
                             <>
-                              <FileCheck className="h-4 w-4 mr-2" />
-                              View Document
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
                             </>
                           )}
                         </Button>
@@ -597,6 +692,103 @@ export default function KYCVerificationPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Document Preview Dialog */}
+      <Dialog
+        open={previewOpen}
+        onOpenChange={(open) => {
+          if (!open) setPreviewDocument(null);
+          setPreviewOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{previewDocument?.fileName}</DialogTitle>
+            <DialogDescription>
+              Document Type: {previewDocument?.documentType} | Uploaded:{" "}
+              {previewDocument?.uploadedAt}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Document Preview Area */}
+          <div className="flex-1 min-h-[60vh] overflow-auto mt-2">
+            {previewDocument && previewDocument.ipfsUrl ? (
+              previewDocument.fileName.toLowerCase().endsWith(".pdf") ? (
+                <iframe
+                  src={`${previewDocument.ipfsUrl}#toolbar=0&navpanes=0`}
+                  className="w-full h-full border rounded"
+                  title={previewDocument.fileName}
+                  style={{ minHeight: "500px" }}
+                />
+              ) : (
+                <img
+                  src={previewDocument.ipfsUrl}
+                  alt={previewDocument.fileName}
+                  className="max-h-[70vh] max-w-full object-contain mx-auto"
+                  onError={(e) => {
+                    // Fallback if image fails to load
+                    (e.target as HTMLImageElement).src =
+                      "https://placehold.co/300x400?text=Preview+Not+Available";
+                    console.error(
+                      "Failed to load image from:",
+                      previewDocument.ipfsUrl
+                    );
+                  }}
+                />
+              )
+            ) : (
+              <div className="h-[200px] w-[200px] bg-muted flex items-center justify-center rounded">
+                <FileIcon size={40} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between items-center mt-4">
+            <Badge
+              variant="outline"
+              className={`${
+                previewDocument?.status === "verified"
+                  ? "bg-green-100 text-green-800 border-green-200"
+                  : previewDocument?.status === "rejected"
+                  ? "bg-red-100 text-red-800 border-red-200"
+                  : "bg-yellow-100 text-yellow-800 border-yellow-200"
+              }`}
+            >
+              {previewDocument?.status?.toUpperCase()}
+            </Badge>
+
+            <div className="space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(previewDocument?.ipfsUrl, "_blank")}
+              >
+                <FileText className="mr-2 h-4 w-4" /> Open in New Tab
+              </Button>
+
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() =>
+                  previewDocument && handleDownloadDocument(previewDocument.id)
+                }
+                disabled={isDownloading[previewDocument?.id || ""]}
+              >
+                {isDownloading[previewDocument?.id || ""] ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" /> Download
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
