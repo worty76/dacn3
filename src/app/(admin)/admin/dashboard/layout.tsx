@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
   CircleUser,
@@ -13,6 +13,9 @@ import {
   Search,
   Users,
   FileText,
+  LogOut,
+  Shield,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +28,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function DashboardLayout({
   children,
@@ -32,6 +38,15 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuthStore();
+  const isUserAdmin = user?.isAdmin || false;
+
+  const handleLogout = () => {
+    logout();
+    toast.success("Logged out successfully");
+    router.push("/");
+  };
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -40,6 +55,23 @@ export default function DashboardLayout({
   const includesPath = (path: string) => {
     return pathname.includes(path);
   };
+
+  // If not admin, redirect to home
+  if (!isUserAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center p-8 max-w-md">
+          <Shield className="mx-auto h-12 w-12 text-red-500 mb-4" />
+          <h1 className="text-2xl font-bold mb-4">Admin Access Required</h1>
+          <p className="mb-6 text-muted-foreground">
+            You don't have permission to view this page. Please contact an
+            administrator if you believe this is an error.
+          </p>
+          <Button onClick={() => router.push("/")}>Go Home</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -58,9 +90,9 @@ export default function DashboardLayout({
           <div className="flex-1">
             <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
               <Link
-                href="/dashboard"
+                href="/admin/dashboard"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                  isActive("/dashboard")
+                  isActive("/admin/dashboard")
                     ? "bg-muted text-primary"
                     : "text-muted-foreground"
                 }`}
@@ -69,9 +101,9 @@ export default function DashboardLayout({
                 Dashboard
               </Link>
               <Link
-                href="/dashboard/documents"
+                href="/admin/dashboard/documents"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                  includesPath("/dashboard/documents")
+                  includesPath("/admin/dashboard/documents")
                     ? "bg-muted text-primary"
                     : "text-muted-foreground"
                 }`}
@@ -80,9 +112,9 @@ export default function DashboardLayout({
                 Documents
               </Link>
               <Link
-                href="/dashboard/users"
+                href="/admin/dashboard/users"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                  includesPath("/dashboard/users")
+                  includesPath("/admin/dashboard/users")
                     ? "bg-muted text-primary"
                     : "text-muted-foreground"
                 }`}
@@ -91,9 +123,9 @@ export default function DashboardLayout({
                 Users
               </Link>
               <Link
-                href="/dashboard/analytics"
+                href="/admin/dashboard/analytics"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                  includesPath("/dashboard/analytics")
+                  includesPath("/admin/dashboard/analytics")
                     ? "bg-muted text-primary"
                     : "text-muted-foreground"
                 }`}
@@ -188,18 +220,52 @@ export default function DashboardLayout({
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" className="rounded-full">
-                <CircleUser className="h-5 w-5" />
-                <span className="sr-only">Toggle user menu</span>
+              <Button variant="outline" className="gap-2 rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage
+                    src={`https://avatar.vercel.sh/${user?.name || "user"}.png`}
+                    alt={user?.name || "User"}
+                  />
+                  <AvatarFallback>
+                    {user?.name?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden sm:inline-block">
+                  {user?.name || "Admin"}
+                </span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-3 py-2">
+                <p className="text-sm font-medium">{user?.email}</p>
+                <p className="text-xs text-muted-foreground">
+                  {isUserAdmin ? (
+                    <span className="flex items-center gap-1">
+                      <Shield className="w-3 h-3 text-blue-500" /> Administrator
+                    </span>
+                  ) : (
+                    "User Account"
+                  )}
+                </p>
+              </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Settings</DropdownMenuItem>
-              <DropdownMenuItem>Support</DropdownMenuItem>
+              <Link href="/profile/me">
+                <DropdownMenuItem className="cursor-pointer">
+                  <User className="mr-2 h-4 w-4" /> Profile
+                </DropdownMenuItem>
+              </Link>
+              <Link href="/admin/dashboard/settings">
+                <DropdownMenuItem className="cursor-pointer">
+                  Settings
+                </DropdownMenuItem>
+              </Link>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Logout</DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer text-red-600 focus:text-red-600"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" /> Logout
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>

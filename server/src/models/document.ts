@@ -1,10 +1,12 @@
 import mongoose, { Document as MongooseDocument } from "mongoose";
+import { IUser } from "./user"; // Add this import
 
 export interface IDocument extends MongooseDocument {
   _id: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId | IUser; // Allow for populated user
   documentType: string;
   ipfsHash: string;
+  ipfsUrl?: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
@@ -16,6 +18,7 @@ export interface IDocument extends MongooseDocument {
   verificationTxHash?: string;
   submittedForVerification?: boolean;
   submissionDate?: Date;
+  feedback?: string; // Add missing feedback field
 }
 
 // Create the schema for Document
@@ -35,6 +38,10 @@ const DocumentSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true,
+    },
+    ipfsUrl: {
+      type: String,
       trim: true,
     },
     fileName: {
@@ -79,6 +86,10 @@ const DocumentSchema = new mongoose.Schema(
     },
     submissionDate: {
       type: Date,
+    },
+    feedback: {
+      type: String,
+      default: null,
     },
   },
   {

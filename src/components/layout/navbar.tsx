@@ -17,7 +17,8 @@ import {
   LogOut,
   Layers,
   User,
-  FileCheck, // Added for KYC
+  FileCheck,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -120,11 +121,11 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
             <div className="relative h-8 w-8">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary to-blue-500 rounded-md rotate-45 transform-gpu" />
-              <div className="absolute inset-[3px] bg-background dark:bg-background rounded-sm" />
-              <Layers
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-md rotate-45 transform-gpu" />
+              <div className="absolute inset-[3px] bg-background dark:bg-slate-900 rounded-sm" />
+              <Shield
                 size={20}
-                className="absolute inset-0 m-auto text-primary"
+                className="absolute inset-0 m-auto text-blue-500"
               />
             </div>
             <span className="font-bold text-xl">BlockVerify</span>
@@ -138,15 +139,17 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
               isActive={pathname === "/about"}
             />
             <NavItem
-              href="/features"
-              label="Features"
-              isActive={pathname === "/features"}
-            />
-            <NavItem
               href="/documents"
               label="Documents"
               isActive={pathname === "/documents"}
             />
+            {isAuthenticated && (
+              <NavItem
+                href="/verify/share"
+                label="Share"
+                isActive={pathname === "/verify/share"}
+              />
+            )}
           </nav>
         </div>
 
@@ -161,7 +164,7 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
               <Link href="/register">
                 <Button
                   size="sm"
-                  className="bg-gradient-to-r from-primary to-blue-500 hover:from-primary/90 hover:to-blue-500/90"
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white border-0"
                 >
                   Get Started
                 </Button>
@@ -180,7 +183,14 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 <div className="px-3 py-2">
                   <p className="text-sm font-medium">{user?.email}</p>
                   <p className="text-xs text-muted-foreground">
-                    {isUserAdmin ? "Administrator" : "Connected to Blockchain"}
+                    {isUserAdmin ? (
+                      <span className="flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-blue-500" />{" "}
+                        Administrator
+                      </span>
+                    ) : (
+                      "Connected to Blockchain"
+                    )}
                   </p>
                 </div>
                 <DropdownMenuSeparator />
@@ -188,27 +198,27 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 {/* Admin-only menu items */}
                 {isUserAdmin && (
                   <>
-                    <Link href="/dashboard">
+                    <Link href="/admin/dashboard">
                       <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                        <BarChart size={16} />
+                        <BarChart size={16} className="text-blue-500" />
                         Dashboard
                       </DropdownMenuItem>
                     </Link>
-                    <Link href="/dashboard/documents">
+                    <Link href="/admin/dashboard/documents">
                       <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                        <FileText size={16} />
+                        <FileText size={16} className="text-indigo-500" />
                         Documents
                       </DropdownMenuItem>
                     </Link>
-                    <Link href="/dashboard/security">
+                    <Link href="/admin/dashboard/security">
                       <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                        <Shield size={16} />
+                        <Shield size={16} className="text-blue-500" />
                         Security
                       </DropdownMenuItem>
                     </Link>
-                    <Link href="/dashboard/settings">
+                    <Link href="/admin/dashboard/settings">
                       <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                        <Settings size={16} />
+                        <Settings size={16} className="text-slate-500" />
                         Settings
                       </DropdownMenuItem>
                     </Link>
@@ -219,14 +229,20 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 {/* Menu items for all users */}
                 <Link href="/profile/me">
                   <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                    <User size={16} />
+                    <User size={16} className="text-blue-500" />
                     Profile
                   </DropdownMenuItem>
                 </Link>
                 <Link href="/kyc">
                   <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                    <FileCheck size={16} />
+                    <FileCheck size={16} className="text-indigo-500" />
                     KYC Verification
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/verify/share">
+                  <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                    <Share2 size={16} className="text-green-500" />
+                    Share Documents
                   </DropdownMenuItem>
                 </Link>
                 <DropdownMenuItem
@@ -256,13 +272,15 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden absolute top-full left-0 right-0 bg-background border-b shadow-md"
+            className="md:hidden absolute top-full left-0 right-0 bg-background dark:bg-slate-900 border-b shadow-md"
           >
             <div className="container mx-auto py-4 flex flex-col gap-3">
               <Link
                 href="/"
                 className={`px-4 py-2 rounded-md ${
-                  pathname === "/" ? "bg-muted text-primary" : "text-foreground"
+                  pathname === "/"
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-500"
+                    : "text-foreground"
                 }`}
               >
                 Home
@@ -271,7 +289,7 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 href="/about"
                 className={`px-4 py-2 rounded-md ${
                   pathname === "/about"
-                    ? "bg-muted text-primary"
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-500"
                     : "text-foreground"
                 }`}
               >
@@ -281,7 +299,7 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 href="/features"
                 className={`px-4 py-2 rounded-md ${
                   pathname === "/features"
-                    ? "bg-muted text-primary"
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-500"
                     : "text-foreground"
                 }`}
               >
@@ -291,12 +309,24 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                 href="/documents"
                 className={`px-4 py-2 rounded-md ${
                   pathname === "/documents"
-                    ? "bg-muted text-primary"
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-500"
                     : "text-foreground"
                 }`}
               >
-                Documentation
+                Documents
               </Link>
+              {isAuthenticated && (
+                <Link
+                  href="/verify/share"
+                  className={`px-4 py-2 rounded-md ${
+                    pathname === "/verify/share"
+                      ? "bg-blue-50 dark:bg-blue-900/30 text-blue-500"
+                      : "text-foreground"
+                  }`}
+                >
+                  Share Documents
+                </Link>
+              )}
 
               {showLoginButtons && (
                 <div className="flex flex-col gap-2 mt-4 border-t pt-4">
@@ -306,7 +336,7 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                     </Button>
                   </Link>
                   <Link href="/register">
-                    <Button className="w-full bg-gradient-to-r from-primary to-blue-500 hover:from-primary/90 hover:to-blue-500/90">
+                    <Button className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white border-0">
                       Get Started
                     </Button>
                   </Link>
@@ -372,6 +402,13 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
                   >
                     <FileCheck size={16} />
                     KYC Verification
+                  </Link>
+                  <Link
+                    href="/verify/share"
+                    className="flex items-center gap-2 px-4 py-2 hover:bg-muted rounded-md"
+                  >
+                    <Share2 size={16} />
+                    Share Documents
                   </Link>
                   <button
                     onClick={handleLogout}

@@ -1,20 +1,31 @@
 import express from "express";
+import { authenticate, isAdmin } from "../middleware/auth";
 import {
   uploadDocument,
   getDocuments,
   verifyDocument,
-  submitForVerification,
   downloadDocument,
+  submitForVerification,
+  getPendingDocuments,
+  adminVerifyDocument,
 } from "../controllers/documentController";
-import { authenticate, isAdmin } from "../middleware/auth";
 
 const router = express.Router();
 
-// Document routes
+// User routes
 router.post("/upload", authenticate, uploadDocument);
 router.get("/", authenticate, getDocuments);
-router.put("/verify/:documentId", authenticate, isAdmin, verifyDocument);
 router.post("/submit-verification", authenticate, submitForVerification);
 router.get("/download/:documentId", authenticate, downloadDocument);
+
+// Admin routes
+router.get("/pending", authenticate, isAdmin, getPendingDocuments);
+router.post("/verify/:documentId", authenticate, isAdmin, verifyDocument);
+router.post(
+  "/admin-verify/:documentId",
+  authenticate,
+  isAdmin,
+  adminVerifyDocument
+);
 
 export default router;

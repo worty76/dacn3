@@ -32,6 +32,7 @@ export const useAuthStore = create<AuthState>()(
           encodeURIComponent(
             JSON.stringify({
               state: {
+                user: user, // Include the full user object
                 isAdmin: user.isAdmin,
                 isAuthenticated: true,
                 token,

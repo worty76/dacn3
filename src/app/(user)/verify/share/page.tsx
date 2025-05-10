@@ -41,6 +41,8 @@ type Document = {
   isVerified: boolean;
   status: string;
   uploadedAt: string;
+  verifiedAt?: string; // Ensure this is properly typed and used
+  verifiedBy?: string; // Name of the admin who verified
 };
 
 export default function VerificationSharePage() {
@@ -50,6 +52,7 @@ export default function VerificationSharePage() {
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [shareExpiryDays, setShareExpiryDays] = useState("7");
   const [includeDetails, setIncludeDetails] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(true); // Add this state
   const [shareableLink, setShareableLink] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const { token } = useAuthStore();
@@ -87,6 +90,10 @@ export default function VerificationSharePage() {
             isVerified: doc.isVerified,
             status: "verified",
             uploadedAt: new Date(doc.uploadedAt).toLocaleDateString(),
+            verifiedAt: doc.verifiedAt
+              ? new Date(doc.verifiedAt).toLocaleDateString()
+              : undefined,
+            verifiedBy: doc.verifiedBy || "System", // Default to "System" if not specified
           }));
 
         setDocuments(verifiedDocuments);
@@ -122,25 +129,42 @@ export default function VerificationSharePage() {
     }
 
     try {
-      // In a real app, this would call your API to create a shareable verification
-      // For demo purposes, we'll just create a mock link
+      // Call the API to create a shareable verification link
+      const response = await fetch(
+        "http://localhost:8000/api/verify/create-share",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            documentIds: selectedDocuments,
+            expiresInDays: parseInt(shareExpiryDays),
+            includeDetails,
+            showDocuments, // Add this field
+          }),
+        }
+      );
 
-      // Create a verification token (this would be done securely on the backend)
-      const verificationCode = Math.random().toString(36).substring(2, 15);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to create shareable link");
+      }
 
-      // Build the shareable link
-      const baseUrl = window.location.origin;
-      const shareUrl = `${baseUrl}/verify?code=${verificationCode}&expires=${
-        Date.now() + parseInt(shareExpiryDays) * 86400000
-      }&details=${includeDetails ? "1" : "0"}`;
+      const data = await response.json();
 
-      setShareableLink(shareUrl);
+      if (!data.success) {
+        throw new Error(data.message || "Failed to create shareable link");
+      }
 
-      // Generate a QR code for the verification link (in a real app)
-      // For demo, we'll use a placeholder image URL
+      // Set the shareable link from the API response
+      setShareableLink(data.verificationUrl);
+
+      // Generate a QR code for the verification link
       setQrCode(
         `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-          shareUrl
+          data.verificationUrl
         )}`
       );
 
@@ -235,14 +259,15 @@ export default function VerificationSharePage() {
                             htmlFor={`doc-${doc.id}`}
                             className="font-medium"
                           >
-                            {doc.documentType}
+                            {doc.documentType} ({doc.fileName})
                           </Label>
-                          <p className="text-sm text-muted-foreground">
-                            Verified on {doc.uploadedAt}
+                          <p className="text-xs text-muted-foreground">
+                            Verified by {doc.verifiedBy || "System"}
+                            {doc.verifiedAt ? ` on ${doc.verifiedAt}` : ""}
                           </p>
                         </div>
                       </div>
-                      <Badge className="bg-green-500">
+                      <Badge className="bg-green-500 text-white">
                         <CheckCircle className="h-3 w-3 mr-1" /> Verified
                       </Badge>
                     </div>
@@ -289,6 +314,17 @@ export default function VerificationSharePage() {
                 <Label htmlFor="include-details">
                   Include document details (document types and verification
                   dates)
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="show-documents"
+                  checked={showDocuments}
+                  onCheckedChange={setShowDocuments}
+                />
+                <Label htmlFor="show-documents">
+                  Allow recipients to view document previews
                 </Label>
               </div>
             </CardContent>

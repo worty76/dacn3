@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/layout/navbar";
+import { AuthProvider } from "@/components/providers/auth-provider";
+import ClientLayout from "@/components/layout/client-layout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,11 +13,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "BlockVerify - Document Verification Blockchain Platform",
-  description: "Secure document verification powered by blockchain technology",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,8 +23,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Navbar />
-        <div className="pt-20">{children}</div>
+        <AuthProvider>
+          <ClientLayout>{children}</ClientLayout>
+        </AuthProvider>
       </body>
     </html>
   );
