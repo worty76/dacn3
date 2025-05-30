@@ -1,34 +1,38 @@
-import mongoose, { Schema, Document, Types } from "mongoose";
-import { IUser } from "./user";
+import mongoose, { Document as MongooseDocument } from "mongoose";
 
 // Define the interface for Blockchain Identity document
-export interface IBlockchainIdentity extends Document {
-  userId: Types.ObjectId | IUser;
-  identityHash: string;
-  blockchainAddress: string;
+export interface IBlockchainIdentity extends MongooseDocument {
+  userId: mongoose.Types.ObjectId;
+  identityHash: string; // DID
+  blockchainAddress: string; // Ethereum address
+  privateKey: string; // Private key (encrypted in production)
   verified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 // Create the schema for Blockchain Identity
-const BlockchainIdentitySchema: Schema = new Schema(
+const BlockchainIdentitySchema = new mongoose.Schema(
   {
     userId: {
-      type: Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      unique: true,
     },
     identityHash: {
       type: String,
       required: true,
       unique: true,
-      trim: true,
     },
     blockchainAddress: {
       type: String,
       required: true,
-      trim: true,
+      unique: true,
+    },
+    privateKey: {
+      type: String,
+      required: true,
     },
     verified: {
       type: Boolean,

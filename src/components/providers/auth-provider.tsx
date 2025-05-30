@@ -16,6 +16,7 @@ const adminPaths = [
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false); // Add this state
   const { isAuthenticated, token, setIsAuthenticated, user, login } =
     useAuthStore();
   const pathname = usePathname();
@@ -77,6 +78,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Mark that we've checked auth from cookies
+    setHasCheckedAuth(true);
+  }, []); // Only run once on mount
+
+  // Separate effect for handling redirects after auth is checked
+  useEffect(() => {
+    // Don't handle redirects until we've checked auth from cookies
+    if (!hasCheckedAuth) {
+      return;
+    }
+
     // Handle auth redirects
     const isPublicPath = publicPaths.some(
       (path) => pathname === path || pathname.startsWith("/verify/")
@@ -136,10 +148,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router,
     setIsAuthenticated,
     user,
-    login,
+    hasCheckedAuth, // Add this dependency
   ]);
 
-  if (isLoading) {
+  if (isLoading || !hasCheckedAuth) {
+    // Update loading condition
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>

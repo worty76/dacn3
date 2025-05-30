@@ -106,7 +106,7 @@ contract DigitalCredential {
     /**
      * @dev Check if a credential is valid
      * @param credentialId The ID of the credential to check
-     * @return isValid True if the credential is valid and not expired
+     * @return True if the credential is valid and not expired
      */
     function isCredentialValid(string memory credentialId) public view returns (bool) {
         Credential memory credential = credentials[credentialId];
@@ -129,7 +129,7 @@ contract DigitalCredential {
     /**
      * @dev Get credential details
      * @param credentialId The ID of the credential
-     * @return Credential details
+     * @return Credential details tuple
      */
     function getCredential(string memory credentialId) public view returns (
         string memory,
@@ -186,7 +186,7 @@ contract DigitalCredential {
     /**
      * @dev Check if an address is an issuer
      * @param issuerAddress The address to check
-     * @return isIssuer True if address is an issuer
+     * @return True if address is an issuer
      */
     function isIssuer(address issuerAddress) public view returns (bool) {
         return issuers[issuerAddress];

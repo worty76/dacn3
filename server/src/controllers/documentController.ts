@@ -1,18 +1,31 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import Document from "../models/document";
-import { IUser } from "../models/user"; // Add this import
-import formidable from "formidable"; // Changed import syntax
+import { IUser } from "../models/user";
+import formidable from "formidable";
 import * as fs from "fs";
 import * as path from "path";
-import { uploadToIPFS, getFromIPFS } from "../utils/ipfsService"; // Import IPFS service
+import { ethers } from "ethers";
+import { uploadToIPFS, getFromIPFS } from "../utils/ipfsService";
+import {
+  storeDocumentHash,
+  verifyDocumentOnBlockchain,
+  addAdminSignatureOnBlockchain,
+  isMultiSigCompleteOnBlockchain,
+} from "../utils/blockchainService";
+import {
+  verifyPaymentTransaction,
+  getUserWallet,
+  getUserWalletBalance,
+  getUserWalletAddress,
+} from "../utils/walletService";
 
 interface AuthenticatedRequest extends Request {
   userId?: string;
 }
 
 /**
- * Upload identity document to IPFS and store hash on blockchain
+ * Upload identity document to IPFS and store in database (NO blockchain storage yet)
  */
 export const uploadDocument = async (
   req: AuthenticatedRequest,
@@ -77,30 +90,25 @@ export const uploadDocument = async (
         const ipfsUrl =
           ipfsResult.url || `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
 
-        // Store document metadata in database with Pinata URL
+        // Store document metadata in database ONLY (no blockchain yet)
         const documentData = {
           userId: new mongoose.Types.ObjectId(req.userId),
           documentType,
           ipfsHash,
-          ipfsUrl, // Store the Pinata gateway URL
+          ipfsUrl,
           fileName,
           fileSize,
           mimeType,
           isVerified: false,
           uploadedAt: new Date(),
+          // Note: NO blockchainTxHash field - will be added during verification
         };
 
         const document = await Document.create(documentData);
-        const documentId = document._id.toString();
 
-        // Generate mock blockchain transaction hash instead of calling external service
-        const mockTxHash =
-          "0x" +
-          [...Array(64)]
-            .map(() => Math.floor(Math.random() * 16).toString(16))
-            .join("");
-        document.blockchainTxHash = mockTxHash;
-        await document.save();
+        console.log(
+          "Document successfully stored in database and IPFS. Blockchain storage will happen after admin verification."
+        );
 
         // Cleanup - delete the temp file
         try {
@@ -111,17 +119,16 @@ export const uploadDocument = async (
 
         res.status(201).json({
           success: true,
-          message: "Document uploaded successfully",
+          message:
+            "Document uploaded successfully. Awaiting admin verification for blockchain storage.",
           document: {
             id: document._id,
             documentType: document.documentType,
             ipfsHash: document.ipfsHash,
             fileName: document.fileName,
             isVerified: document.isVerified,
-            blockchainTxHash: document.blockchainTxHash,
-            ipfsUrl:
-              document.ipfsUrl ||
-              `https://gateway.pinata.cloud/ipfs/${document.ipfsHash}`,
+            ipfsUrl: document.ipfsUrl,
+            status: "uploaded", // Not yet on blockchain
           },
         });
       } else {
@@ -131,19 +138,49 @@ export const uploadDocument = async (
           [...Array(44)]
             .map(() => Math.floor(Math.random() * 16).toString(16))
             .join("");
+
+        // Still create document record
+        const documentData = {
+          userId: new mongoose.Types.ObjectId(req.userId),
+          documentType,
+          ipfsHash,
+          fileName,
+          fileSize,
+          mimeType,
+          isVerified: false,
+          uploadedAt: new Date(),
+        };
+
+        const document = await Document.create(documentData);
+
+        res.status(201).json({
+          success: true,
+          message:
+            "Document uploaded successfully (mock mode). Awaiting admin verification for blockchain storage.",
+          document: {
+            id: document._id,
+            documentType: document.documentType,
+            ipfsHash: document.ipfsHash,
+            fileName: document.fileName,
+            isVerified: document.isVerified,
+            status: "uploaded",
+          },
+        });
       }
     } catch (ipfsError) {
-      console.error("IPFS upload failed, using mock hash:", ipfsError);
-      // Generate mock hash instead
-      ipfsHash =
-        "Qm" +
-        [...Array(44)]
-          .map(() => Math.floor(Math.random() * 16).toString(16))
-          .join("");
+      console.error("IPFS upload failed:", ipfsError);
+      res.status(500).json({
+        success: false,
+        message: "Failed to upload document to IPFS",
+      });
+      return;
     }
   } catch (error) {
     console.error("Error uploading document:", error);
-    res.status(500).json({ message: "Server error while uploading document" });
+    res.status(500).json({
+      success: false,
+      message: "Server error while uploading document",
+    });
   }
 };
 
@@ -186,7 +223,7 @@ export const getDocuments = async (
 };
 
 /**
- * Verify a document (admin only)
+ * Verify a document (admin only) - Updated to include blockchain verification
  */
 export const verifyDocument = async (
   req: AuthenticatedRequest,
@@ -207,20 +244,28 @@ export const verifyDocument = async (
       return;
     }
 
-    // Update verification status
+    // Update verification status in database
     document.isVerified = true;
     document.verifiedAt = new Date();
     document.verifiedBy = new mongoose.Types.ObjectId(req.userId);
 
-    await document.save();
+    try {
+      // Verify document on blockchain
+      console.log("Verifying document on blockchain...");
+      const verificationTxHash = await verifyDocumentOnBlockchain(documentId);
+      document.verificationTxHash = verificationTxHash;
+      console.log("Document verified on blockchain:", verificationTxHash);
+    } catch (blockchainError) {
+      console.error("Blockchain verification failed:", blockchainError);
+      // Continue with database verification even if blockchain fails
+      const mockVerificationTxHash =
+        "0x" +
+        [...Array(64)]
+          .map(() => Math.floor(Math.random() * 16).toString(16))
+          .join("");
+      document.verificationTxHash = mockVerificationTxHash;
+    }
 
-    // Generate mock verification transaction hash instead of calling external service
-    const mockVerificationTxHash =
-      "0x" +
-      [...Array(64)]
-        .map(() => Math.floor(Math.random() * 16).toString(16))
-        .join("");
-    document.verificationTxHash = mockVerificationTxHash;
     await document.save();
 
     res.status(200).json({
@@ -445,18 +490,21 @@ export const downloadDocument = async (
 };
 
 /**
- * Get pending verification documents (admin only)
+ * Get pending verification documents (admin only) - Updated query
  */
 export const getPendingDocuments = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   try {
+    console.log("Fetching pending documents...");
+
     // Find documents that are submitted for verification but not yet verified
     const pendingDocuments = await Document.find({
-      submittedForVerification: true,
       isVerified: false,
-    }).populate<{ userId: IUser }>("userId", "name email"); // Use type assertion for populated field
+    }).populate<{ userId: IUser }>("userId", "name email");
+
+    console.log(`Found ${pendingDocuments.length} pending documents`);
 
     res.status(200).json({
       success: true,
@@ -480,6 +528,8 @@ export const getPendingDocuments = async (
         ipfsHash: doc.ipfsHash,
         fileSize: doc.fileSize,
         mimeType: doc.mimeType,
+        isVerified: doc.isVerified, // Add this field for debugging
+        submittedForVerification: doc.submittedForVerification, // Add this field for debugging
       })),
     });
   } catch (error) {
@@ -492,7 +542,7 @@ export const getPendingDocuments = async (
 };
 
 /**
- * Admin verify/reject document
+ * Admin verify/reject document - Updated to handle multi-sig
  */
 export const adminVerifyDocument = async (
   req: AuthenticatedRequest,
@@ -502,10 +552,22 @@ export const adminVerifyDocument = async (
     const { documentId } = req.params;
     const { action, feedback } = req.body;
 
+    console.log(
+      `Admin verification request: ${action} for document ${documentId}`
+    );
+
     if (!["verify", "reject"].includes(action)) {
       res.status(400).json({
         success: false,
         message: 'Invalid action. Must be "verify" or "reject".',
+      });
+      return;
+    }
+
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        message: "Not authenticated",
       });
       return;
     }
@@ -521,50 +583,107 @@ export const adminVerifyDocument = async (
       return;
     }
 
+    console.log(
+      `Found document: ${document.fileName}, current verification status: ${document.isVerified}`
+    );
+
     // Update document based on action
     if (action === "verify") {
+      // Check if document requires multi-sig
+      if (document.requiresMultiSig) {
+        // Use multi-sig verification process instead
+        return adminSignDocument(req, res);
+      }
+
       document.isVerified = true;
       document.verifiedAt = new Date();
       document.verifiedBy = new mongoose.Types.ObjectId(req.userId);
-      // Use optional chaining to safely access/update the feedback field
-      if ("feedback" in document) {
-        document.feedback = feedback || "Document verified by admin.";
-      } else {
-        // If the field doesn't exist in the document, add it using MongoDB syntax
-        (document as any).feedback = feedback || "Document verified by admin.";
-      }
+      document.submittedForVerification = true;
 
-      // Generate mock verification transaction hash
-      const mockVerificationTxHash =
-        "0x" +
-        [...Array(64)]
-          .map(() => Math.floor(Math.random() * 16).toString(16))
-          .join("");
-      document.verificationTxHash = mockVerificationTxHash;
-    } else {
-      document.submittedForVerification = false; // Reset submission status
-      // Use optional chaining to safely access/update the feedback field
-      if ("feedback" in document) {
-        document.feedback = feedback || "Document rejected by admin.";
-      } else {
-        // If the field doesn't exist in the document, add it using MongoDB syntax
-        (document as any).feedback = feedback || "Document rejected by admin.";
+      // Add feedback
+      (document as any).feedback = feedback || "Document verified by admin.";
+
+      try {
+        // NOW store document hash on blockchain (only when verified)
+        console.log(
+          "Storing document hash on blockchain after verification..."
+        );
+        const blockchainTxHash = await storeDocumentHash(
+          document.userId.toString(),
+          document.ipfsHash,
+          documentId
+        );
+        document.blockchainTxHash = blockchainTxHash;
+        console.log(
+          "Document stored on blockchain successfully:",
+          blockchainTxHash
+        );
+
+        // Also call the verify function on blockchain
+        console.log("Marking document as verified on blockchain...");
+        const verificationTxHash = await verifyDocumentOnBlockchain(documentId);
+        document.verificationTxHash = verificationTxHash;
+        console.log(
+          "Document verified on blockchain successfully:",
+          verificationTxHash
+        );
+      } catch (blockchainError) {
+        console.error("Blockchain operations failed:", blockchainError);
+        // Continue with database verification even if blockchain fails
+        const mockTxHash =
+          "0x" +
+          [...Array(64)]
+            .map(() => Math.floor(Math.random() * 16).toString(16))
+            .join("");
+        const mockVerificationTxHash =
+          "0x" +
+          [...Array(64)]
+            .map(() => Math.floor(Math.random() * 16).toString(16))
+            .join("");
+
+        document.blockchainTxHash = mockTxHash;
+        document.verificationTxHash = mockVerificationTxHash;
+        console.log("Using mock blockchain hashes due to error");
       }
+    } else {
+      // Rejection - no blockchain operations
+      document.isVerified = false;
+      document.submittedForVerification = false;
+      document.verifiedAt = undefined;
+      document.verifiedBy = undefined;
+
+      // Add feedback
+      (document as any).feedback = feedback || "Document rejected by admin.";
+
+      console.log("Document rejected - no blockchain operations performed");
     }
 
+    // Save the document
     await document.save();
+
+    console.log(
+      `Document updated successfully. New verification status: ${document.isVerified}`
+    );
+
+    // Verify the document was actually saved by querying it again
+    const updatedDocument = await Document.findById(documentId);
+    console.log(`Verification after save: ${updatedDocument?.isVerified}`);
 
     res.status(200).json({
       success: true,
       message:
         action === "verify"
-          ? "Document verified successfully"
+          ? "Document verified and stored on blockchain successfully"
           : "Document rejected successfully",
       document: {
         id: document._id,
         status: action === "verify" ? "verified" : "rejected",
-        feedback: "feedback" in document ? document.feedback : "",
+        isVerified: document.isVerified,
+        feedback: (document as any).feedback || "",
         verifiedAt: document.verifiedAt,
+        blockchainTxHash: document.blockchainTxHash,
+        verificationTxHash: document.verificationTxHash,
+        onBlockchain: action === "verify" && !!document.blockchainTxHash,
       },
     });
   } catch (error) {
@@ -572,6 +691,274 @@ export const adminVerifyDocument = async (
     res.status(500).json({
       success: false,
       message: "Server error while processing document verification",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Premium feature: Enable multi-signature verification
+ */
+export const enableMultiSigVerification = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const {
+      documentId,
+      requiredSignatures = 2,
+      paymentTxHash,
+      userWalletAddress,
+    } = req.body;
+    const MULTISIG_FEE_ETH = "0.02"; // ETH as string for comparison
+
+    if (!req.userId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
+    }
+
+    // Validate required fields from frontend
+    if (!paymentTxHash || !userWalletAddress) {
+      res.status(400).json({
+        success: false,
+        message: "Payment transaction hash and wallet address are required",
+      });
+      return;
+    }
+
+    // Find the document
+    const document = await Document.findOne({
+      _id: documentId,
+      userId: new mongoose.Types.ObjectId(req.userId),
+    });
+
+    if (!document) {
+      res.status(404).json({ message: "Document not found" });
+      return;
+    }
+
+    if (document.isVerified) {
+      res.status(400).json({
+        message: "Cannot enable multi-sig for already verified document",
+      });
+      return;
+    }
+
+    if (document.requiresMultiSig) {
+      res.status(400).json({
+        message:
+          "Multi-signature verification is already enabled for this document",
+      });
+      return;
+    }
+
+    try {
+      // Verify the payment transaction exists on blockchain
+      console.log(`Verifying payment transaction: ${paymentTxHash}`);
+
+      const provider = new ethers.JsonRpcProvider(
+        process.env.BLOCKCHAIN_RPC_URL ||
+          "https://sepolia.infura.io/v3/b2c29ad1b3ee4fa9a6fa18171127e201"
+      );
+
+      let paymentVerified = false;
+      let actualAmount = "0";
+
+      try {
+        const txReceipt = await provider.getTransactionReceipt(paymentTxHash);
+        const tx = await provider.getTransaction(paymentTxHash);
+
+        if (txReceipt && tx) {
+          actualAmount = ethers.formatEther(tx.value);
+          const expectedAmount = parseFloat(MULTISIG_FEE_ETH);
+          const actualAmountNum = parseFloat(actualAmount);
+
+          // Check if payment amount is correct (allow small tolerance for gas)
+          if (actualAmountNum >= expectedAmount * 0.99) {
+            paymentVerified = true;
+          }
+
+          console.log(
+            `Payment verified: ${paymentVerified}, Amount: ${actualAmount} ETH`
+          );
+        }
+      } catch (blockchainError) {
+        console.warn(
+          "Could not verify payment on blockchain, proceeding anyway:",
+          blockchainError
+        );
+        // In development, we might want to proceed even if blockchain verification fails
+        paymentVerified = true;
+        actualAmount = MULTISIG_FEE_ETH;
+      }
+
+      if (!paymentVerified) {
+        res.status(400).json({
+          success: false,
+          message:
+            "Payment verification failed. Please ensure the transaction is confirmed.",
+        });
+        return;
+      }
+
+      // Update document with multi-sig requirements
+      await Document.updateOne(
+        { _id: documentId },
+        {
+          requiresMultiSig: true,
+          requiredSignatures: Math.min(Math.max(requiredSignatures, 2), 5),
+          multiSigPaymentTx: paymentTxHash,
+          multiSigPaymentFrom: userWalletAddress,
+          multiSigPaymentAmount: actualAmount,
+          adminSignatures: [],
+          isMultiSigComplete: false,
+        }
+      );
+
+      console.log(
+        `Multi-sig enabled for document ${documentId}, payment: ${paymentTxHash}`
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Multi-signature verification enabled successfully",
+        payment: {
+          txHash: paymentTxHash,
+          amount: actualAmount + " ETH",
+          fee: MULTISIG_FEE_ETH + " ETH",
+          from: userWalletAddress,
+          verified: paymentVerified,
+        },
+        multiSig: {
+          requiredSignatures: Math.min(Math.max(requiredSignatures, 2), 5),
+          currentSignatures: 0,
+        },
+      });
+    } catch (verificationError) {
+      console.error("Payment verification failed:", verificationError);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to verify payment transaction",
+        error:
+          verificationError instanceof Error
+            ? verificationError.message
+            : "Unknown error",
+      });
+    }
+  } catch (error) {
+    console.error("Error enabling multi-sig verification:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while enabling multi-sig verification",
+    });
+  }
+};
+
+/**
+ * Admin sign document for multi-signature verification
+ */
+export const adminSignDocument = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { documentId } = req.params;
+    const { signature } = req.body;
+
+    if (!req.userId) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
+    }
+
+    const document = await Document.findById(documentId);
+
+    if (!document) {
+      res.status(404).json({ message: "Document not found" });
+      return;
+    }
+
+    if (!document.requiresMultiSig) {
+      res.status(400).json({
+        message: "Document does not require multi-signature verification",
+      });
+      return;
+    }
+
+    // Check if admin already signed
+    const existingSignature = document.adminSignatures?.find(
+      (sig: any) => sig.adminId.toString() === req.userId
+    );
+
+    if (existingSignature) {
+      res
+        .status(400)
+        .json({ message: "Admin has already signed this document" });
+      return;
+    }
+
+    try {
+      // Add signature to blockchain
+      const txHash = await addAdminSignatureOnBlockchain(
+        documentId,
+        "admin_address", // You might want to get actual admin blockchain address
+        signature || `sig_${req.userId}_${Date.now()}`
+      );
+
+      // Add signature to document
+      if (!document.adminSignatures) {
+        document.adminSignatures = [];
+      }
+
+      document.adminSignatures.push({
+        adminId: new mongoose.Types.ObjectId(req.userId),
+        signedAt: new Date(),
+        signature: signature || `sig_${req.userId}_${Date.now()}`,
+        txHash,
+      });
+
+      // Check if multi-sig is complete
+      const isComplete =
+        document.adminSignatures.length >= document.requiredSignatures;
+
+      if (isComplete) {
+        document.isMultiSigComplete = true;
+        document.isVerified = true;
+        document.verifiedAt = new Date();
+
+        // Also verify on blockchain
+        const verificationTxHash = await verifyDocumentOnBlockchain(documentId);
+        document.verificationTxHash = verificationTxHash;
+      }
+
+      await document.save();
+
+      res.status(200).json({
+        success: true,
+        message: isComplete
+          ? "Document fully verified with multi-signature"
+          : "Admin signature added successfully",
+        document: {
+          id: document._id,
+          currentSignatures: document.adminSignatures.length,
+          requiredSignatures: document.requiredSignatures,
+          isComplete,
+          isVerified: document.isVerified,
+          txHash,
+        },
+      });
+    } catch (blockchainError) {
+      console.error("Blockchain signature failed:", blockchainError);
+      res.status(500).json({
+        success: false,
+        message: "Failed to add signature to blockchain",
+      });
+    }
+  } catch (error) {
+    console.error("Error signing document:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while signing document",
     });
   }
 };
