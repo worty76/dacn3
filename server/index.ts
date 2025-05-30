@@ -7,7 +7,7 @@ import documentRoutes from "./src/routes/documentRoute";
 import blockchainRoutes from "./src/routes/blockchainRoute";
 import logRoutes from "./src/routes/logRoute";
 import ipfsRoutes from "./src/routes/ipfsRoute";
-import shareRoutes from "./src/routes/shareRoute"; // Add this import
+import shareRoutes from "./src/routes/shareRoute";
 
 // For env File
 dotenv.config();
@@ -31,6 +31,16 @@ mongoose
     console.error("MongoDB connection error:", err);
   });
 
+// Health check endpoint
+app.get("/api/health", (req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 // Routes
 app.get("/", (req: Request, res: Response) => {
   res.send("Welcome to Express & TypeScript Server");
@@ -42,7 +52,7 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/blockchain", blockchainRoutes);
 app.use("/api/logs", logRoutes);
 app.use("/api/ipfs", ipfsRoutes);
-app.use("/api/verify", shareRoutes); // Add this route
+app.use("/api/verify", shareRoutes);
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);

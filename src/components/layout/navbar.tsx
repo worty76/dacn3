@@ -134,11 +134,6 @@ export default function Navbar({ showAuthButtons = true }: NavbarProps) {
           <nav className="hidden md:flex items-center space-x-1">
             <NavItem href="/" label="Home" isActive={pathname === "/"} />
             <NavItem
-              href="/about"
-              label="About"
-              isActive={pathname === "/about"}
-            />
-            <NavItem
               href="/documents"
               label="Documents"
               isActive={pathname === "/documents"}

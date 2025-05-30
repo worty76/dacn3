@@ -11,7 +11,7 @@ contract DocumentVerification {
     struct Document {
         string documentId;      // Database ID of document
         string ipfsHash;        // IPFS hash of document
-        address owner;          // Owner of document
+        address documentOwner;  // Changed from 'owner' to avoid conflict
         bool isVerified;        // Verification status
         uint256 timestamp;      // When document was added
         uint256 verifiedAt;     // When document was verified
@@ -27,7 +27,7 @@ contract DocumentVerification {
     // List of verifiers who can verify documents
     mapping(address => bool) public verifiers;
     
-    event DocumentAdded(string documentId, string ipfsHash, address owner, uint256 timestamp);
+    event DocumentAdded(string documentId, string ipfsHash, address documentOwner, uint256 timestamp);
     event DocumentVerified(string documentId, address verifier, uint256 timestamp);
     event DocumentRevoked(string documentId, address verifier, uint256 timestamp);
     event VerifierAdded(address verifier);
@@ -59,7 +59,7 @@ contract DocumentVerification {
         documents[documentId] = Document({
             documentId: documentId,
             ipfsHash: ipfsHash,
-            owner: msg.sender,
+            documentOwner: msg.sender,  // Updated field name
             isVerified: false,
             timestamp: block.timestamp,
             verifiedAt: 0,
@@ -102,7 +102,7 @@ contract DocumentVerification {
     /**
      * @dev Check if a document is verified
      * @param documentId The ID of the document to check
-     * @return isVerified verification status
+     * @return verification status
      */
     function isDocumentVerified(string memory documentId) public view returns (bool) {
         return documents[documentId].isVerified;
@@ -111,7 +111,7 @@ contract DocumentVerification {
     /**
      * @dev Get document details
      * @param documentId The ID of the document
-     * @return Document details
+     * @return Document details tuple
      */
     function getDocument(string memory documentId) public view returns (
         string memory,
@@ -126,7 +126,7 @@ contract DocumentVerification {
         return (
             doc.documentId,
             doc.ipfsHash,
-            doc.owner,
+            doc.documentOwner,  // Updated field name
             doc.isVerified,
             doc.timestamp,
             doc.verifiedAt,
@@ -165,7 +165,7 @@ contract DocumentVerification {
     /**
      * @dev Check if an address is a verifier
      * @param verifierAddress The address to check
-     * @return isVerifier True if address is a verifier
+     * @return True if address is a verifier
      */
     function isVerifier(address verifierAddress) public view returns (bool) {
         return verifiers[verifierAddress];

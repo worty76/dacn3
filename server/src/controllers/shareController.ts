@@ -136,10 +136,12 @@ export const getSharedVerification = async (
       "name email"
     );
 
-    // Get documents
+    // Get documents with populated verifiedBy and adminSignatures
     const documents = await Document.find({
       _id: { $in: verificationShare.documentIds },
-    }).populate<{ verifiedBy: IUser }>("verifiedBy", "name");
+    })
+      .populate<{ verifiedBy: IUser }>("verifiedBy", "name")
+      .populate("adminSignatures.adminId", "name");
 
     // Transform documents for response with document preview URLs
     const documentData = await Promise.all(
@@ -152,6 +154,48 @@ export const getSharedVerification = async (
           ? `http://localhost:8000/api/ipfs/content/${doc.ipfsHash}`
           : undefined;
 
+        // Handle verification information based on verification type
+        let verificationInfo = {};
+
+        if (verificationShare.includeDetails && doc.isVerified) {
+          if (doc.requiresMultiSig && doc.adminSignatures?.length > 0) {
+            // Multi-signature verification - show all signing admins as an array of strings
+            const signingAdmins = doc.adminSignatures.map(
+              (sig: any) => sig.adminId?.name || "Admin"
+            );
+            //   doc.adminSignatures.length === index - 1? sig.adminId?.name + "," : sig.adminId?.name || "Admin"
+            verificationInfo = {
+              verificationType: "multi-signature",
+              verifiedBy: signingAdmins, // Array of admin names (strings)
+              verifiedByDetails: doc.adminSignatures.map((sig: any) => ({
+                name: sig.adminId?.name || "Admin",
+                signedAt: sig.signedAt,
+              })), // Separate field for detailed info
+              requiredSignatures: doc.requiredSignatures || 2,
+              currentSignatures: doc.adminSignatures.length,
+              isMultiSigComplete: doc.isMultiSigComplete || false,
+            };
+          } else {
+            // Single admin verification - keep as array of strings for consistency
+            const adminName = doc.verifiedBy
+              ? typeof doc.verifiedBy === "object" && "name" in doc.verifiedBy
+                ? doc.verifiedBy.name
+                : "Admin"
+              : "Admin";
+
+            verificationInfo = {
+              verificationType: "single-admin",
+              verifiedBy: [adminName],
+              verifiedByDetails: [
+                {
+                  name: adminName,
+                  signedAt: doc.verifiedAt,
+                },
+              ],
+            };
+          }
+        }
+
         return {
           id: doc._id,
           documentType: doc.documentType,
@@ -159,15 +203,11 @@ export const getSharedVerification = async (
           uploadedAt: doc.uploadedAt,
           isVerified: doc.isVerified,
           verifiedAt: doc.verifiedAt,
-          verifiedBy:
-            verificationShare.includeDetails && doc.verifiedBy
-              ? typeof doc.verifiedBy === "object" && "name" in doc.verifiedBy
-                ? doc.verifiedBy.name
-                : "Admin"
-              : undefined,
           submittedBy: submitter?.name || "Document Owner",
           ipfsHash: verificationShare.includeDetails ? doc.ipfsHash : undefined,
-          previewUrl: previewUrl, // Add the preview URL
+          previewUrl: previewUrl,
+          requiresMultiSig: doc.requiresMultiSig || false,
+          ...verificationInfo,
         };
       })
     );
@@ -180,7 +220,7 @@ export const getSharedVerification = async (
       documents: documentData,
       expiresAt: verificationShare.expiresAt,
       includeDetails: verificationShare.includeDetails,
-      showDocuments: verificationShare.showDocuments, // Add this field
+      showDocuments: verificationShare.showDocuments,
     });
   } catch (error) {
     console.error("Error in getSharedVerification:", error);

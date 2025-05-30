@@ -8,6 +8,8 @@ import {
   submitForVerification,
   getPendingDocuments,
   adminVerifyDocument,
+  enableMultiSigVerification,
+  adminSignDocument,
 } from "../controllers/documentController";
 
 const router = express.Router();
@@ -18,6 +20,9 @@ router.get("/", authenticate, getDocuments);
 router.post("/submit-verification", authenticate, submitForVerification);
 router.get("/download/:documentId", authenticate, downloadDocument);
 
+// Premium multi-signature routes (user)
+router.post("/enable-multisig", authenticate, enableMultiSigVerification);
+
 // Admin routes
 router.get("/pending", authenticate, isAdmin, getPendingDocuments);
 router.post("/verify/:documentId", authenticate, isAdmin, verifyDocument);
@@ -26,6 +31,12 @@ router.post(
   authenticate,
   isAdmin,
   adminVerifyDocument
+);
+router.post(
+  "/admin-sign/:documentId",
+  authenticate,
+  isAdmin,
+  adminSignDocument
 );
 
 export default router;

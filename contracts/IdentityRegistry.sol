@@ -103,7 +103,7 @@ contract IdentityRegistry {
     /**
      * @dev Check if an identity is verified
      * @param did The DID to check
-     * @return isVerified True if identity is verified
+     * @return True if identity is verified and active
      */
     function isIdentityVerified(string memory did) public view returns (bool) {
         return identities[did].verified && identities[did].active;
@@ -112,7 +112,7 @@ contract IdentityRegistry {
     /**
      * @dev Get identity details
      * @param did The DID
-     * @return Identity details
+     * @return Identity details tuple
      */
     function getIdentity(string memory did) public view returns (
         string memory,
@@ -138,7 +138,7 @@ contract IdentityRegistry {
     /**
      * @dev Get DID by user address
      * @param userAddress The user's address
-     * @return did The user's DID
+     * @return The user's DID
      */
     function getDid(address userAddress) public view returns (string memory) {
         return addressToDid[userAddress];
@@ -166,7 +166,7 @@ contract IdentityRegistry {
     /**
      * @dev Check if an address is a verifier
      * @param verifierAddress The address to check
-     * @return isVerifier True if address is a verifier
+     * @return True if address is a verifier
      */
     function isVerifier(address verifierAddress) public view returns (bool) {
         return verifiers[verifierAddress];

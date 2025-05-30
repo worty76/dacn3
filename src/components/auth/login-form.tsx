@@ -1,3 +1,5 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +16,15 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Loader2, Shield, Lock, Mail } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  Shield,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -29,6 +39,7 @@ export function LoginForm({
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
   // Get login function from auth store
@@ -164,13 +175,27 @@ export function LoginForm({
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 h-4 w-4" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={formData.password}
                     onChange={handleChange}
                     disabled={isLoading}
                     className="pl-10"
                   />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
               <Button

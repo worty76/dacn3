@@ -27,14 +27,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
   Eye,
   Download,
-  Trash2,
   MoreVertical,
   FileIcon,
   Plus,
@@ -42,8 +40,12 @@ import {
   Loader2,
   AlertCircle,
   FileText,
+  Shield,
+  CreditCard,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useWallet } from "@/hooks/useWallet";
+import { ethers } from "ethers";
 
 // Document status options
 const documentStatuses = {
@@ -63,9 +65,10 @@ type Document = {
   submittedForVerification?: boolean;
   verifiedAt?: string;
   status?: string;
-  ipfsUrl?: string; // Add IPFS URL field
+  ipfsUrl?: string;
   ipfsHash?: string;
   previewUrl?: string;
+  requiresMultiSig?: boolean;
 };
 
 export default function DocumentsPage() {
@@ -79,8 +82,20 @@ export default function DocumentsPage() {
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // New state for multi-sig dialog
+  const [multiSigDialog, setMultiSigDialog] = useState<{
+    isOpen: boolean;
+    document: Document | null;
+    isProcessing: boolean;
+  }>({
+    isOpen: false,
+    document: null,
+    isProcessing: false,
+  });
+
   // Get token from auth store
   const { token } = useAuthStore();
+  const { wallet } = useWallet();
 
   // Fetch documents when component mounts
   useEffect(() => {
@@ -132,6 +147,7 @@ export default function DocumentsPage() {
             ipfsUrl: proxyUrl,
             ipfsHash: doc.ipfsHash,
             previewUrl: proxyUrl,
+            requiresMultiSig: doc.requiresMultiSig || false,
           };
         });
 
@@ -191,16 +207,13 @@ export default function DocumentsPage() {
     if (!token) return;
 
     try {
-      // Use the new dedicated download endpoint
-      const downloadUrl = `http://localhost:8000/api/ipfs/download/${documentId}`;
-
-      // Show a loading indicator
+      const downloadUrl = `http://localhost:8000/api/documents/download/${documentId}`;
       const downloadingDoc = documents.find((doc) => doc.id === documentId);
+
       if (downloadingDoc) {
         console.log(`Starting download of ${downloadingDoc.fileName}...`);
       }
 
-      // Create fetch request with authentication
       fetch(downloadUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -213,21 +226,15 @@ export default function DocumentsPage() {
           return response.blob();
         })
         .then((blob) => {
-          // Get file name from the document
           const fileName =
             downloadingDoc?.fileName || `document-${documentId}.file`;
 
-          // Create download link
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
           link.download = fileName;
           document.body.appendChild(link);
-
-          // Trigger download
           link.click();
-
-          // Clean up
           URL.revokeObjectURL(url);
           document.body.removeChild(link);
           console.log(`Download complete for ${fileName}`);
@@ -247,6 +254,109 @@ export default function DocumentsPage() {
   const handlePreviewDocument = (document: Document) => {
     setPreviewDocument(document);
     setPreviewOpen(true);
+  };
+
+  const handleEnableMultiSig = async (doc: Document) => {
+    if (!wallet.isConnected) {
+      setError(
+        "Please connect your wallet first to enable multi-signature verification"
+      );
+      return;
+    }
+
+    setMultiSigDialog({
+      isOpen: true,
+      document: doc,
+      isProcessing: false,
+    });
+  };
+
+  const confirmEnableMultiSig = async () => {
+    if (!multiSigDialog.document || !wallet.isConnected) return;
+
+    setMultiSigDialog((prev) => ({ ...prev, isProcessing: true }));
+
+    try {
+      // Check wallet balance
+      const balance = parseFloat(wallet.balance || "0");
+      if (balance < 0.021) {
+        throw new Error(
+          "Insufficient balance. You need at least 0.021 ETH for multi-sig verification"
+        );
+      }
+
+      // Check if window.ethereum exists
+      if (!window.ethereum) {
+        throw new Error("MetaMask or compatible wallet not found");
+      }
+
+      // Fixed: Use ethers.BrowserProvider correctly - window.ethereum is the provider, not a constructor
+      const web3Provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await web3Provider.getSigner();
+
+      const tx = await signer.sendTransaction({
+        to:
+          process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
+          "0x742F35Cc6681C17B4e9c93d4Fc8F3a5DB5b5f11D",
+        value: ethers.parseEther("0.02"),
+      });
+
+      console.log("Payment transaction sent:", tx.hash);
+
+      // Wait for confirmation
+      const receipt = await tx.wait();
+      console.log("Payment confirmed:", receipt);
+
+      // Enable multi-sig on backend
+      const response = await fetch(
+        "http://localhost:8000/api/documents/enable-multisig",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            documentId: multiSigDialog.document.id,
+            requiredSignatures: 2,
+            paymentTxHash: tx.hash,
+            userWalletAddress: wallet.address,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(
+          result.message || "Failed to enable multi-signature verification"
+        );
+      }
+
+      // Update document in local state
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.id === multiSigDialog.document?.id
+            ? { ...d, status: "multisig-enabled", requiresMultiSig: true }
+            : d
+        )
+      );
+
+      setMultiSigDialog({ isOpen: false, document: null, isProcessing: false });
+
+      // Show success message
+      setError(null);
+      console.log("Multi-signature verification enabled successfully!");
+    } catch (err) {
+      console.error("Error enabling multi-sig:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to enable multi-signature verification"
+      );
+    } finally {
+      setMultiSigDialog((prev) => ({ ...prev, isProcessing: false }));
+    }
   };
 
   const getStatusBadgeVariant = (status: string) => {
@@ -363,7 +473,6 @@ export default function DocumentsPage() {
                                     alt={doc.fileName}
                                     className="h-10 w-16 rounded object-cover"
                                     onError={(e) => {
-                                      // If image fails to load, replace with generic file icon
                                       (
                                         e.target as HTMLImageElement
                                       ).style.display = "none";
@@ -390,9 +499,19 @@ export default function DocumentsPage() {
                                     <FileIcon size={16} />
                                   </div>
                                 )}
-                                <span className="truncate max-w-[150px]">
-                                  {doc.fileName}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="truncate max-w-[150px]">
+                                    {doc.fileName}
+                                  </span>
+                                  {doc.requiresMultiSig && (
+                                    <div className="flex items-center gap-1">
+                                      <Shield className="h-3 w-3 text-blue-600" />
+                                      <span className="text-xs text-blue-600">
+                                        Multi-Sig Enabled
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell>{doc.documentType}</TableCell>
@@ -428,14 +547,18 @@ export default function DocumentsPage() {
                                     <Download className="mr-2 h-4 w-4" />
                                     Download
                                   </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive"
-                                    onClick={() => handleDeleteDocument(doc.id)}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete
-                                  </DropdownMenuItem>
+                                  {doc.status === "pending" &&
+                                    !doc.isVerified &&
+                                    !doc.requiresMultiSig && (
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          handleEnableMultiSig(doc)
+                                        }
+                                      >
+                                        <Shield className="mr-2 h-4 w-4" />
+                                        Enable Multi-Sig (Premium)
+                                      </DropdownMenuItem>
+                                    )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>
@@ -499,7 +622,6 @@ export default function DocumentsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* PDF Viewer with improved styling for better viewing experience */}
           <div className="flex-1 min-h-[70vh] overflow-auto">
             {previewDocument?.previewUrl ? (
               previewDocument.fileName.toLowerCase().endsWith(".pdf") ? (
@@ -540,7 +662,6 @@ export default function DocumentsPage() {
                   alt={previewDocument.fileName}
                   className="max-h-[70vh] max-w-full object-contain mx-auto"
                   onError={(e) => {
-                    // Fallback if image fails to load
                     (e.target as HTMLImageElement).src =
                       "https://placehold.co/300x400?text=Preview+Not+Available";
                     console.error(
@@ -587,6 +708,90 @@ export default function DocumentsPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Multi-Sig Enable Dialog */}
+      <Dialog
+        open={multiSigDialog.isOpen}
+        onOpenChange={(open) =>
+          !multiSigDialog.isProcessing &&
+          setMultiSigDialog((prev) => ({ ...prev, isOpen: open }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-blue-600" />
+              Enable Multi-Signature Verification
+            </DialogTitle>
+            <DialogDescription>
+              Premium feature: Requires multiple admin signatures for enhanced
+              security.
+              <br />
+              <strong>Cost: 0.02 ETH</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-medium text-blue-900">What you get:</h3>
+              <ul className="text-sm text-blue-800 mt-2 space-y-1">
+                <li>• Enhanced security with multiple admin approvals</li>
+                <li>• Higher trust level for your verified documents</li>
+                <li>• Premium verification badge</li>
+                <li>• Blockchain transparency of all signatures</li>
+              </ul>
+            </div>
+
+            {multiSigDialog.document && (
+              <div className="border p-3 rounded">
+                <p className="font-medium">
+                  {multiSigDialog.document.fileName}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {multiSigDialog.document.documentType}
+                </p>
+              </div>
+            )}
+
+            <div className="bg-yellow-50 p-3 rounded">
+              <p className="text-sm text-yellow-800">
+                <CreditCard className="inline h-4 w-4 mr-1" />
+                Payment will be processed using your connected wallet:{" "}
+                {wallet.address?.slice(0, 8)}...
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setMultiSigDialog((prev) => ({ ...prev, isOpen: false }))
+              }
+              disabled={multiSigDialog.isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmEnableMultiSig}
+              disabled={multiSigDialog.isProcessing}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {multiSigDialog.isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing Payment...
+                </>
+              ) : (
+                <>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Pay 0.02 ETH & Enable
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

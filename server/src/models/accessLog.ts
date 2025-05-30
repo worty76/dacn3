@@ -1,47 +1,44 @@
-import mongoose, { Schema, Document, Types } from "mongoose";
-import { IUser } from "./user";
+import mongoose, { Document as MongooseDocument } from "mongoose";
 
 // Define the interface for Access Log
-export interface IAccessLog extends Document {
-  userId?: Types.ObjectId | IUser;
-  resourceType: string;
-  resourceId?: string;
-  action: string;
-  accessedBy: string; // user, admin, or third-party
-  ipAddress: string;
-  userAgent: string;
+export interface IAccessLog extends MongooseDocument {
+  userId?: mongoose.Types.ObjectId;
+  resourceType: string; // document, identity, etc.
+  resourceId: string;
+  action: string; // view, download, verify, etc.
+  accessedBy: string; // user, admin, third-party
+  ipAddress?: string;
+  userAgent?: string;
   timestamp: Date;
 }
 
 // Create the schema for Access Log
-const AccessLogSchema: Schema = new Schema(
+const AccessLogSchema = new mongoose.Schema(
   {
     userId: {
-      type: Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      required: false, // Optional for anonymous access
     },
     resourceType: {
       type: String,
       required: true,
-      trim: true,
     },
     resourceId: {
       type: String,
-      trim: true,
+      required: true,
     },
     action: {
       type: String,
       required: true,
-      trim: true,
     },
     accessedBy: {
       type: String,
+      required: true,
       enum: ["user", "admin", "third-party"],
-      default: "user",
     },
     ipAddress: {
       type: String,
-      trim: true,
     },
     userAgent: {
       type: String,
@@ -52,14 +49,9 @@ const AccessLogSchema: Schema = new Schema(
     },
   },
   {
-    timestamps: true,
+    timestamps: false, // We're using our own timestamp field
   }
 );
-
-// Create index for common query patterns
-AccessLogSchema.index({ userId: 1, timestamp: -1 });
-AccessLogSchema.index({ resourceType: 1, resourceId: 1 });
-AccessLogSchema.index({ timestamp: -1 });
 
 // Create and export the Access Log model
 const AccessLog = mongoose.model<IAccessLog>("AccessLog", AccessLogSchema);

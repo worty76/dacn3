@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Edit, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Edit, CheckCircle, Clock, AlertCircle, Wallet } from "lucide-react";
 import EditProfileDialog from "@/components/profile/EditProfileDialog";
+import WalletConnectButton from "@/components/wallet/WalletConnectButton";
+import { useWallet } from "@/hooks/useWallet";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Define TypeScript interfaces for our data structures
@@ -56,6 +58,7 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { token } = useAuthStore(); // Get token from auth store
+  const { wallet } = useWallet();
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -210,7 +213,10 @@ export default function ProfilePage() {
         </Alert>
       )}
 
-      <h1 className="text-3xl font-bold mb-6">My Profile</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">My Profile</h1>
+        <WalletConnectButton />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main Profile Card */}
@@ -292,51 +298,103 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Activity Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>
-              Your identity verification history
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {user.recentActivity && user.recentActivity.length > 0 ? (
-              <div className="space-y-4">
-                {user.recentActivity.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-center justify-between border-b pb-3"
-                  >
-                    <div>
-                      <p className="font-medium">{activity.type}</p>
-                      <p className="text-xs text-gray-500">{activity.date}</p>
-                    </div>
-                    <div>
-                      {activity.status === "completed" ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-green-50 text-green-700 border-green-200"
-                        >
-                          <CheckCircle className="h-3 w-3 mr-1" /> Complete
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-yellow-50 text-yellow-700 border-yellow-200"
-                        >
-                          <Clock className="h-3 w-3 mr-1" /> Pending
-                        </Badge>
-                      )}
-                    </div>
+        {/* Wallet & Activity Card */}
+        <div className="space-y-6">
+          {/* Wallet Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Wallet Connection
+              </CardTitle>
+              <CardDescription>
+                Connect your wallet for premium features
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {wallet.isConnected ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-700">
+                      Connected
+                    </span>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No recent activity found.</p>
-            )}
-          </CardContent>
-        </Card>
+                  <div className="text-sm space-y-1">
+                    <p className="font-mono text-xs break-all">
+                      {wallet.address}
+                    </p>
+                    <p className="text-gray-500">
+                      Balance: {parseFloat(wallet.balance!).toFixed(4)} ETH
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-yellow-600" />
+                    <span className="text-sm font-medium text-yellow-700">
+                      Not Connected
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-3">
+                    Connect your wallet to enable premium features like
+                    multi-signature verification.
+                  </p>
+                  <WalletConnectButton />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Activity Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>
+                Your identity verification history
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {user.recentActivity && user.recentActivity.length > 0 ? (
+                <div className="space-y-4">
+                  {user.recentActivity.map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-center justify-between border-b pb-3"
+                    >
+                      <div>
+                        <p className="font-medium">{activity.type}</p>
+                        <p className="text-xs text-gray-500">{activity.date}</p>
+                      </div>
+                      <div>
+                        {activity.status === "completed" ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-green-50 text-green-700 border-green-200"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" /> Complete
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                          >
+                            <Clock className="h-3 w-3 mr-1" /> Pending
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No recent activity found.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <EditProfileDialog
